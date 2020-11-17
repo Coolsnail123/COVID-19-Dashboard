@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <title>COVID-19 Data Analysis Dashboard - CSDS 234 Final Project</title>
+    <meta charset="utf-8">
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+    <link href="https://bootswatch.com/4/journal/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link rel='stylesheet' href='https://codepen.io/chriddyp/pen/bWLwgP.css'>
+    <script type="text/javascript" src="https://cdn.bokeh.org/bokeh/release/bokeh-2.2.3.min.js"
+        crossorigin="anonymous"></script>
+    <script type="text/javascript" src="http://cdn.bokeh.org/bokeh/release/bokeh-api-2.2.3.min.js"
+        crossorigin="anonymous"></script>
+    <!-- Style settings -->
+    <style>
+        .title {
+            padding: 20px;
+            text-align: center;
+            margin: auto;
+            font-size: 80px;
+        }
+
+        table.statistics_table {
+            padding: 60px;
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: center;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: #33C3F0;"></nav>
+    <div class="title">
+        <h1>COVID-19 Data Analysis</h1>
+    </div>
+
+    <!-- Creates dropdowns for continent and country -->
+    <form method="POST">
+        {{ country_form.csrf_token }}
+        {{ country_form.continent }}
+        {{ country_form.country }}
+        {{ date_form.date }}
+        <input type="submit">
+    </form>
+    <script>
+        let continent_select = document.getElementById('continent')
+        let country_select = document.getElementById('country')
+
+        continent_select.onchange = function () {
+            continent = continent_select.value;
+
+            fetch('/country/' + continent).then(function (response) {
+                response.json().then(function (data) {
+
+                    let optionHTML = '';
+
+                    for (let country of data.countries) {
+                        optionHTML += '<option value="' + country.id + '">' + country.name + '</option>';
+                    }
+
+                    country_select.innerHTML = optionHTML;
+
+                });
+            });
+        }
+    </script>
+
+    <!-- Creates table of country statistics -->
+    <table class="statistics_table" method="POST">
+        <h2>Country Statistics for {{country}}</h2>
+        <thead>
+            <tr>
+                <th></th>
+                {% for header in country_headers %}
+                <th>{{ header }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <th>Statistics</th>
+                {% for data in country_data %}
+                <th>{{ data }}</th>
+                {% endfor %}
+            </tr>
+            <tr>
+                <th>World Ranking</th>
+                {% for data in world_rank_data %}
+                <th>{{ data }}</th>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+    <!-- Creates table of country statistics -->
+    <table class="statistics_table" method="POST">
+        <h2>COVID-19 Statistics on {{date_form.date.data}}</h2>
+        <thead>
+            <tr>
+                {% for header in covid_headers %}
+                <th>{{ header }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                {% for data in covid_data %}
+                <th>{{ data }}</th>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+    <h2>Visual Analysis</h2>
+    <div class="row">
+        <div class="col-sm-4">
+            <!-- Creates graph of country's stringency index over time -->
+            {{ stringency_script | safe }}
+            {{ stringency_div | safe }}
+        </div>
+        <div class="col-sm-4">
+            <!-- Creates graph of country's cases over time -->
+            {{ case_script | safe }}
+            {{ case_div | safe }}
+        </div>
+        <div class="col-sm-4">
+            <!-- Creates graph of country's deaths over time -->
+            {{ death_script | safe }}
+            {{ death_div | safe }}
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-6">
+            <!-- Creates bar chart for age 65+ -->
+            {{ age_chart_script | safe }}
+            {{ age_chart_div | safe }}
+        </div>
+        <div class="col-sm-6">
+            <!-- Creates bar chart for HDI -->
+            {{ hdi_chart_script | safe }}
+            {{ hdi_chart_div | safe }}
+        </div>
+    </div>
+
+    </div>
+</body>
+
+</html>

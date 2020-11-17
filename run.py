@@ -1,0 +1,427 @@
+import json
+import os
+from datetime import date, datetime, timedelta
+
+import numpy as np
+import pandas as pd
+from bokeh.embed import components
+from bokeh.models import HoverTool, LabelSet, ColumnDataSource
+from bokeh.palettes import Viridis5
+from bokeh.plotting import figure
+from bson.objectid import ObjectId
+from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask_wtf import FlaskForm
+from pymongo import MongoClient
+from wtforms import SelectField
+
+client = MongoClient(
+    "Contact repo creator for database access")
+
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
+
+
+class CountryForm(FlaskForm):
+    continent = SelectField('continent', choices=[
+                            'Africa', 'Asia', 'Europe', 'North America', 'South America', 'Oceania'])
+    country = SelectField('country', choices=[])
+
+
+class DateForm(FlaskForm):
+    date = SelectField('date', choices=[])
+
+
+@app.route('/', methods=['GET', 'POST'])
+def main():
+    db = client['covid19']
+    collection = db['Africa']
+
+    # Set default dropdown choices with Africa
+    countries_list = []
+    for country in collection.find({"continent": "Africa"}, {"location": 1}):
+        country_id = country.get("_id")
+        country_name = country.get("location")
+        country_pair = (country_id, country_name)
+        countries_list.append(country_pair)
+
+    # Set up continent/country form
+    country_form = CountryForm()
+    country_form.country.choices = countries_list
+
+    # Set dropdown choices for days
+    time_list = []
+    start_date = date(2020, 1, 1)
+    end_date = date(2020, 11, 1)
+    delta = timedelta(days=1)
+    while start_date <= end_date:
+        time_list.append(start_date.strftime("%Y-%m-%d"))
+        start_date += delta
+
+    # Set up date form
+    date_form = DateForm()
+    date_form.date.choices = time_list
+
+    # Headers, data and HTML components for tables/graphs to be rendered on webpage
+    country_headers, country_data, world_rank_data = (), (), ()
+    document_list = []
+    covid_headers, covid_data = (), ()
+    stringency_script, stringency_div = "", ""
+    case_script, case_div = "", ""
+    death_script, death_div = "", ""
+    age_chart_script, age_chart_div = "", ""
+    hdi_chart_script, hdi_chart_div = "", ""
+
+    if request.method == "POST":
+        continent = country_form.continent.data
+        collection = db[f"{continent}"]
+        for document in collection.find({"_id": ObjectId(country_form.country.data)}, {"_id": 0, "location": 1}):
+            country = document.get("location")
+
+        # Queries to get country statistics
+        population = cursor_stats(continent, ObjectId(
+            country_form.country.data), "population")
+        med_age = cursor_stats(continent, ObjectId(
+            country_form.country.data), "median_age")
+        percent_pop_65 = cursor_stats(continent, ObjectId(
+            country_form.country.data), "aged_65_older")
+        gdp = cursor_stats(continent, ObjectId(
+            country_form.country.data), "gdp_per_capita")
+        hospital_beds = cursor_stats(continent, ObjectId(
+            country_form.country.data), "hospital_beds_per_thousand")
+        life_expectancy = cursor_stats(continent, ObjectId(
+            country_form.country.data), "life_expectancy")
+        human_dev_index = cursor_stats(continent, ObjectId(
+            country_form.country.data), "human_development_index")
+
+        # Consolidate above queries into tuple to render on the webpage
+        country_headers = ("Population", "Median Age", "Percent of Population 65+", "Per Capita GDP",
+                           "Hospital Beds Per Thousand", "Life Expectancy", "Human Development Index")
+        country_data = (population, med_age, percent_pop_65, gdp,
+                        hospital_beds, life_expectancy, human_dev_index)
+
+        # Queries to get world ranking of country for various statistics
+        collections_list = ['Africa', 'Asia', 'Europe',
+                            'North America', 'South America', 'Oceania']
+        # Create list of every country in the world with field
+        for collection in collections_list:
+            collection = db[collection]
+            for document in collection.find({}, {"location": 1, "population": 1, "median_age": 1, "aged_65_older": 1, "gdp_per_capita": 1, "hospital_beds_per_thousand": 1, "life_expectancy": 1, "human_development_index": 1}):
+                document_list.append(document)
+
+        population_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "population")
+        med_age_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "median_age")
+        percent_pop_65_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "aged_65_older")
+        gdp_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "gdp_per_capita")
+        hospital_beds_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "hospital_beds_per_thousand")
+        life_expectancy_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "life_expectancy")
+        human_dev_index_rank = cursor_rank(ObjectId(
+            country_form.country.data), document_list, "human_development_index")
+
+        # Consolidate above queries into tuple to render on the webpage
+        world_rank_data = (population_rank, med_age_rank, percent_pop_65_rank,
+                           gdp_rank, hospital_beds_rank, life_expectancy_rank, human_dev_index_rank)
+
+        # Queries to get covid statistics
+        new_cases = cursor_covid(continent, ObjectId(
+            country_form.country.data), "data.new_cases", date_form.date.data, "new_cases")
+        new_deaths = cursor_covid(continent, ObjectId(
+            country_form.country.data), "data.new_deaths", date_form.date.data, "new_deaths")
+        tot_cases = cursor_covid(continent, ObjectId(
+            country_form.country.data), "data.total_cases", date_form.date.data, "total_cases")
+        tot_deaths = cursor_covid(continent, ObjectId(
+            country_form.country.data), "data.total_deaths", date_form.date.data, "total_deaths")
+        case_growth_rate_DoD = cursor_covid_case_growth(continent, ObjectId(
+            country_form.country.data), date_form.date.data,
+            str(datetime.strptime(date_form.date.data, '%Y-%m-%d').date() - timedelta(days=1)))
+
+        # Consolidate above queries into tuple to render on the webpage
+        covid_headers = ("New Cases", "New Deaths",
+                         "Total Cases", "Total Deaths", "Percent case growth rate day-over-day")
+        covid_data = (new_cases, new_deaths, tot_cases,
+                      tot_deaths, case_growth_rate_DoD)
+
+        # Create HTML components for bokeh visualizations to send to frontend
+        stringency_script, stringency_div = make_line_plot(
+            continent, ObjectId(country_form.country.data), "data.stringency_index", "stringency_index")
+        case_script, case_div = make_line_plot(
+            continent, ObjectId(country_form.country.data), "data.total_cases", "total_cases")
+        death_script, death_div = make_line_plot(
+            continent, ObjectId(country_form.country.data), "data.total_deaths", "total_deaths")
+        age_chart_script, age_chart_div = make_bar_chart(
+            ObjectId(country_form.country.data), "aged_65_older")
+        hdi_chart_script, hdi_chart_div = make_bar_chart(
+            ObjectId(country_form.country.data), "human_development_index")
+
+    return render_template('main.html',
+                           country_form=country_form,
+                           date_form=date_form,
+                           country_headers=country_headers,
+                           country_data=country_data,
+                           world_rank_data=world_rank_data,
+                           covid_headers=covid_headers,
+                           covid_data=covid_data,
+                           stringency_script=stringency_script,
+                           stringency_div=stringency_div,
+                           case_script=case_script,
+                           case_div=case_div,
+                           death_script=death_script,
+                           death_div=death_div,
+                           age_chart_script=age_chart_script,
+                           age_chart_div=age_chart_div,
+                           hdi_chart_script=hdi_chart_script,
+                           hdi_chart_div=hdi_chart_div,
+                           country=country
+                           )
+
+
+# Helper function for quick country statistic queries
+def cursor_stats(continent, country_id, field_stat):
+    db = client['covid19']
+    collection = db[f"{continent}"]
+
+    country_stat = "Not Available"
+    document = list(collection.find(
+        {"_id": country_id}, {"_id": 0, field_stat: 1}))
+
+    # If the statistic is unavailable, return "Not Available"
+    for dict in document:
+        if bool(dict) == False:
+            return country_stat
+        country_stat = dict.get(field_stat)
+
+    return country_stat
+
+
+# Helper function for country ranking in the world by a statistical measure
+def cursor_rank(country_id, doc_list, field_covid):
+    # Sort the document/country list based on the field
+    new_document_list = []
+    for dict in doc_list:
+        if field_covid in dict:
+            new_document_list.append(dict)
+    document_list_sorted = sorted(
+        new_document_list, key=lambda i: i[field_covid], reverse=True)
+    country_rank = "Not Available"
+
+    # Based on the field, find selected country's ranking for the given statistic
+    rank = 1
+    for dict in document_list_sorted:
+        if field_covid not in dict:
+            return country_rank
+        if dict.get("_id") == country_id:
+            country_data = dict
+            break
+        rank += 1
+
+    return rank
+
+
+# Helper function for quick covid statistic queries
+def cursor_covid(continent, country_id, field_covid, date, field):
+    db = client['covid19']
+    collection = db[f"{continent}"]
+
+    # Find list of dicts containing date and {field_covid} for choice country
+    covid_stat = "Not Available"
+    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, field_covid: 1}):
+        covid = document.get("data")
+
+    # Loop through dicts until finding the one with the corresponding date from dropdown
+    for dict in covid:
+        if dict.get("date") == date:
+            covid_stat = dict
+            break
+    if type(covid_stat) == str:
+        return covid_stat
+
+    return covid_stat.get(field)
+
+
+# Helper function for quick covid statistic queries
+def cursor_covid_case_growth(continent, country_id, date_today, date_yesterday):
+    db = client['covid19']
+    collection = db[f"{continent}"]
+    covid_case_growth = "Not Available"
+
+    # If the date is the first date of the year (i.e. no previous date exists in data)
+    if date_today == '2020-01-01':
+        return 0
+
+    # Find list of dicts containing date and total cases for choice country
+    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, "data.total_cases": 1}):
+        covid = document.get("data")
+
+    # Loop through dicts until finding the ones corresponding with the dropdown choice date and one day earlier date
+    case_today, case_yesterday = {}, {}
+    for dict in covid:
+        if dict.get("date") == date_yesterday:
+            case_yesterday = dict
+            if "total_cases" not in case_yesterday:
+                return 0
+        if dict.get("date") == date_today:
+            case_today = dict
+            if "total_cases" not in case_today:
+                return 0
+            break
+
+    if bool(case_today) == False or bool(case_yesterday) == False:
+        return covid_case_growth
+
+    # Calculate case growth rate over previous day
+    case_growth = (case_today.get("total_cases") -
+                   case_yesterday.get("total_cases"))/(case_yesterday.get("total_cases"))*100
+
+    return round(case_growth, 2)
+
+
+# Helper function to make plot HTML components for stringency index, total cases, and total deaths line plots
+def make_line_plot(continent, country_id, field_covid, field):
+    db = client['covid19']
+    collection = db[f"{continent}"]
+
+    # Find list of dicts containing date, total_cases, and total_deaths for choice country
+    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, field_covid: 1}):
+        plot_data = list(document.get("data"))
+
+    # Set total_cases and total_deaths to 0 for days where no data exists
+    for dict in plot_data:
+        if field not in dict:
+            dict[field] = 0
+
+    # Create lists for x and y coordinates
+    x = pd.to_datetime([dict['date'] for dict in plot_data])
+    y = [dict[field] for dict in plot_data]
+
+    # Create line plot with HTML components to send to frontend
+    field_list = ["total_cases", "total_deaths", "stringency_index"]
+    title_list = ["Cases over time",
+                  "Deaths over time", "Stringency Index of time"]
+    color_list = ["red", "green", "yellow"]
+    index = 0
+    plot = figure(plot_height=300, sizing_mode='scale_width',
+                  x_axis_type="datetime")
+    plot.line(x, y, line_width=3)
+    for stat in field_list:
+        if stat == field:
+            plot.title.text = title_list[index]
+            plot.add_tools(HoverTool(
+                tooltips=[("Date", "$x{%F}"),
+                          (title_list[index], "$y")],
+                formatters={"$x": 'datetime'}, mode='vline'))
+            break
+        index += 1
+    script, div = components(plot)
+
+    return script, div
+
+
+def make_bar_chart(country_id, field):
+    db = client['covid19']
+    collections_list = ['Africa', 'Asia', 'Europe',
+                        'North America', 'South America', 'Oceania']
+    document_list, countries_comparison = [], []
+    country_data = {}
+
+    # Create list of every country in the world with field
+    for collection in collections_list:
+        collection = db[collection]
+        for document in collection.find({}, {"location": 1, field: 1}):
+            if field in document:
+                document_list.append({"_id": document.get("_id"), "location": document.get(
+                    "location"), field: document.get(field)})
+
+    # Sort the country list based on the field
+    document_list_sorted = sorted(document_list, key=lambda i: i[field])
+
+    # Based on the field, find countries +/- 2 spots from the selected country in the sorted list
+    index = 0
+    for dict in document_list_sorted:
+        if dict.get("_id") == country_id:
+            country_data = dict
+            break
+        index += 1
+
+    # Find four other countries to compare the selected country to
+    # Handle cases of countries in lowest end of list
+    placemarker = index
+    remaining_list_size = 5
+    if index in range(0, 2):
+        while index >= 0:
+            countries_comparison.append(document_list_sorted[index])
+            index -= 1
+        remaining_list_size -= len(countries_comparison)
+        while remaining_list_size > 0:
+            countries_comparison.append(document_list_sorted[placemarker + 1])
+            placemarker += 1
+            remaining_list_size -= 1
+
+    # Handle cases of countries in highest end of list
+    elif index in range(len(document_list_sorted) - 2, len(document_list_sorted)):
+        while index < len(document_list_sorted):
+            countries_comparison.append(document_list_sorted[index])
+            index += 1
+        remaining_list_size -= len(countries_comparison)
+        while remaining_list_size > 0:
+            countries_comparison.append(document_list_sorted[placemarker - 1])
+            placemarker -= 1
+            remaining_list_size -= 1
+
+    # Handles any other case
+    else:
+        countries_comparison = [document_list_sorted[index - 2], document_list_sorted[index - 1],
+                                country_data, document_list_sorted[index + 1], document_list_sorted[index + 2]]
+    countries_comparison_sorted = sorted(
+        countries_comparison, key=lambda i: i[field])
+
+    # Create ColumnDataSource object to hold all chart data
+    country_list = [dict["location"] for dict in countries_comparison_sorted]
+    field_list = [dict[field] for dict in countries_comparison_sorted]
+    data = {'x_values': country_list,
+            'top_values': field_list,
+            'color': Viridis5}
+    source = ColumnDataSource(data=data)
+
+    # Create bar chart with HTML components to send to frontend
+    title = "Percent of population older than 65 (five countries comparison)" if field == "aged_65_older" else "Human Development Index (five countries comparison)"
+    chart = figure(x_range=country_list, plot_height=300,
+                   sizing_mode='scale_width', title=title)
+    labels = LabelSet(x='x_values', y='top_values', text='top_values', text_align='center',
+                      level='glyph', source=source, render_mode='canvas')
+    chart.vbar(x='x_values', top='top_values',
+               bottom=0, width=0.5, color='color', source=source)
+    chart.add_layout(labels)
+    chart.xgrid.grid_line_color = 'gray'
+    chart.xgrid.grid_line_alpha = .75
+    chart.xgrid.grid_line_dash = 'dashed'
+    chart.ygrid.grid_line_color = 'gray'
+    chart.ygrid.grid_line_alpha = .75
+    chart.ygrid.grid_line_dash = 'dashed'
+    script, div = components(chart)
+
+    return script, div
+
+
+@app.route('/country/<continent>')
+def country(continent):
+    db = client['covid19']
+    collection = db[f"{continent}"]
+    countries_array = []
+
+    # Find matching countries for continent with country id and country name
+    for country in collection.find({"continent": f"{continent}"}, {"location": 1}):
+        country_obj = {}
+        country_obj['id'] = str(country.get("_id"))
+        country_obj['name'] = country.get("location")
+        countries_array.append(country_obj)
+
+    return jsonify({'countries': countries_array})
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
