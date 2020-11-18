@@ -19,7 +19,8 @@
             padding: 20px;
             text-align: center;
             margin: auto;
-            font-size: 80px;
+            font-size: 90px;
+            font-weight: bold;
         }
 
         table.statistics_table {
@@ -29,6 +30,17 @@
             margin-right: auto;
             text-align: center;
             vertical-align: middle;
+        }
+
+        .box {
+            background-color: rgb(255, 255, 255);
+            width: 100%;
+            border: 20px solid#33C3F0;
+            padding: 20px;
+            text-align: center;
+            margin-left: auto;
+            margin-right: auto;
+            font-size: 30px;
         }
     </style>
 </head>
@@ -70,6 +82,22 @@
         }
     </script>
 
+    <div>
+        <h2>World Summary Statistics</h2>
+        <div class="row">
+            <div class="box col-sm-6" method="POST">
+                <p>
+                    {{summary_headers[0]}}<br><b>{{summary_data[0]}}</b><br>
+                </p>
+            </div>
+            <div class="box col-sm-6" method="POST">
+                <p>
+                    {{summary_headers[1]}}<br><b>{{summary_data[1]}}</b><br>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- Creates table of country statistics -->
     <table class="statistics_table" method="POST">
         <h2>Country Statistics for {{country}}</h2>
@@ -77,21 +105,21 @@
             <tr>
                 <th></th>
                 {% for header in country_headers %}
-                <th>{{ header }}</th>
+                <th style="text-align:center">{{ header }}</th>
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
             <tr>
-                <th>Statistics</th>
+                <th style="text-align:center">Statistics</th>
                 {% for data in country_data %}
-                <th>{{ data }}</th>
+                <td style="text-align:center">{{ data }}</td>
                 {% endfor %}
             </tr>
             <tr>
-                <th>World Ranking</th>
+                <th style="text-align:center">World Ranking (out of 214 countries)</th>
                 {% for data in world_rank_data %}
-                <th>{{ data }}</th>
+                <td style="text-align:center">{{ data }}</td>
                 {% endfor %}
             </tr>
         </tbody>
@@ -102,14 +130,14 @@
         <thead>
             <tr>
                 {% for header in covid_headers %}
-                <th>{{ header }}</th>
+                <th style="text-align:center">{{ header }}</th>
                 {% endfor %}
             </tr>
         </thead>
         <tbody>
             <tr>
                 {% for data in covid_data %}
-                <th>{{ data }}</th>
+                <td style="text-align:center">{{ data }}</td>
                 {% endfor %}
             </tr>
         </tbody>

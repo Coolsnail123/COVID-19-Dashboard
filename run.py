@@ -15,7 +15,7 @@ from pymongo import MongoClient
 from wtforms import SelectField
 
 client = MongoClient(
-    "Contact repo creator for database access")
+    "mongodb+srv://sbp45:9381Gicz1eizn3w5@covid19.w6297.mongodb.net/covid19?retryWrites=true&w=majority")
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -62,6 +62,7 @@ def main():
     date_form.date.choices = time_list
 
     # Headers, data and HTML components for tables/graphs to be rendered on webpage
+    summary_headers, summary_data = (), ()
     country_headers, country_data, world_rank_data = (), (), ()
     document_list = []
     covid_headers, covid_data = (), ()
@@ -77,15 +78,29 @@ def main():
         for document in collection.find({"_id": ObjectId(country_form.country.data)}, {"_id": 0, "location": 1}):
             country = document.get("location")
 
+        # Queries to get summary aggregated statistics
+        summary_cases = ('{:,}'.format(
+            summary_query(str(datetime.strptime(date_form.date.data, '%Y-%m-%d').date()), "total_cases")))
+        summary_deaths = ('{:,}'.format(
+            summary_query(str(datetime.strptime(date_form.date.data, '%Y-%m-%d').date()), "total_deaths")))
+
+        # Consolidate above queries into tuple to render on the webpage
+        summary_headers = ("TOTAL CASES", "TOTAL DEATHS")
+        summary_data = (summary_cases, summary_deaths)
+
         # Queries to get country statistics
-        population = cursor_stats(continent, ObjectId(
-            country_form.country.data), "population")
+        population = ('{:,}'.format(cursor_stats(continent, ObjectId(
+            country_form.country.data), "population"))) if cursor_stats(continent, ObjectId(
+                country_form.country.data), "population") > 1000 else cursor_stats(continent, ObjectId(
+                    country_form.country.data), "population")
         med_age = cursor_stats(continent, ObjectId(
             country_form.country.data), "median_age")
         percent_pop_65 = cursor_stats(continent, ObjectId(
             country_form.country.data), "aged_65_older")
-        gdp = cursor_stats(continent, ObjectId(
-            country_form.country.data), "gdp_per_capita")
+        gdp = ('{:,}'.format(cursor_stats(continent, ObjectId(
+            country_form.country.data), "gdp_per_capita"))) if cursor_stats(continent, ObjectId(
+                country_form.country.data), "gdp_per_capita") > 1000 else cursor_stats(continent, ObjectId(
+                    country_form.country.data), "gdp_per_capita")
         hospital_beds = cursor_stats(continent, ObjectId(
             country_form.country.data), "hospital_beds_per_thousand")
         life_expectancy = cursor_stats(continent, ObjectId(
@@ -128,14 +143,22 @@ def main():
                            gdp_rank, hospital_beds_rank, life_expectancy_rank, human_dev_index_rank)
 
         # Queries to get covid statistics
-        new_cases = cursor_covid(continent, ObjectId(
-            country_form.country.data), "data.new_cases", date_form.date.data, "new_cases")
-        new_deaths = cursor_covid(continent, ObjectId(
-            country_form.country.data), "data.new_deaths", date_form.date.data, "new_deaths")
-        tot_cases = cursor_covid(continent, ObjectId(
-            country_form.country.data), "data.total_cases", date_form.date.data, "total_cases")
-        tot_deaths = cursor_covid(continent, ObjectId(
-            country_form.country.data), "data.total_deaths", date_form.date.data, "total_deaths")
+        new_cases = ('{:,}'.format(cursor_covid(continent, ObjectId(
+            country_form.country.data), date_form.date.data, "new_cases"))) if cursor_covid(continent, ObjectId(
+                country_form.country.data), date_form.date.data, "new_cases") > 1000 else cursor_covid(continent, ObjectId(
+                    country_form.country.data), date_form.date.data, "new_cases")
+        new_deaths = ('{:,}'.format(cursor_covid(continent, ObjectId(
+            country_form.country.data), date_form.date.data, "new_deaths"))) if cursor_covid(continent, ObjectId(
+                country_form.country.data), date_form.date.data, "new_deaths") > 1000 else cursor_covid(continent, ObjectId(
+                    country_form.country.data), date_form.date.data, "new_deaths")
+        tot_cases = ('{:,}'.format(cursor_covid(continent, ObjectId(
+            country_form.country.data), date_form.date.data, "total_cases"))) if cursor_covid(continent, ObjectId(
+                country_form.country.data), date_form.date.data, "total_cases") > 1000 else cursor_covid(continent, ObjectId(
+                    country_form.country.data), date_form.date.data, "total_cases")
+        tot_deaths = ('{:,}'.format(cursor_covid(continent, ObjectId(
+            country_form.country.data), date_form.date.data, "total_deaths"))) if cursor_covid(continent, ObjectId(
+                country_form.country.data), date_form.date.data, "total_deaths") > 1000 else cursor_covid(continent, ObjectId(
+                    country_form.country.data), date_form.date.data, "total_deaths")
         case_growth_rate_DoD = cursor_covid_case_growth(continent, ObjectId(
             country_form.country.data), date_form.date.data,
             str(datetime.strptime(date_form.date.data, '%Y-%m-%d').date() - timedelta(days=1)))
@@ -148,19 +171,21 @@ def main():
 
         # Create HTML components for bokeh visualizations to send to frontend
         stringency_script, stringency_div = make_line_plot(
-            continent, ObjectId(country_form.country.data), "data.stringency_index", "stringency_index")
+            continent, ObjectId(country_form.country.data), "stringency_index")
         case_script, case_div = make_line_plot(
-            continent, ObjectId(country_form.country.data), "data.total_cases", "total_cases")
+            continent, ObjectId(country_form.country.data), "new_cases")
         death_script, death_div = make_line_plot(
-            continent, ObjectId(country_form.country.data), "data.total_deaths", "total_deaths")
+            continent, ObjectId(country_form.country.data), "new_deaths")
         age_chart_script, age_chart_div = make_bar_chart(
             ObjectId(country_form.country.data), "aged_65_older")
         hdi_chart_script, hdi_chart_div = make_bar_chart(
             ObjectId(country_form.country.data), "human_development_index")
 
-    return render_template('main.html',
+    return render_template('test.html',
                            country_form=country_form,
                            date_form=date_form,
+                           summary_headers=summary_headers,
+                           summary_data=summary_data,
                            country_headers=country_headers,
                            country_data=country_data,
                            world_rank_data=world_rank_data,
@@ -180,12 +205,30 @@ def main():
                            )
 
 
+# Helper function for quick summary aggregation queries
+def summary_query(date, field):
+    db = client['covid19']
+    collections_list = ['Africa', 'Asia', 'Europe',
+                        'North America', 'South America', 'Oceania']
+    sum = 0
+
+    # Find total cases or deaths from beginning of the Pandemic to a certain date
+    for collection in collections_list:
+        collection = db[collection]
+        for document in collection.find({"data.date": date}, {"data.date": 1, f"data.{field}": 1}):
+            for dict in document.get("data"):
+                if dict.keys() >= {"date", field} and dict.get("date") == date:
+                    sum += dict.get(field)
+
+    return sum
+
+
 # Helper function for quick country statistic queries
 def cursor_stats(continent, country_id, field_stat):
     db = client['covid19']
     collection = db[f"{continent}"]
 
-    country_stat = "Not Available"
+    country_stat = 0
     document = list(collection.find(
         {"_id": country_id}, {"_id": 0, field_stat: 1}))
 
@@ -223,13 +266,13 @@ def cursor_rank(country_id, doc_list, field_covid):
 
 
 # Helper function for quick covid statistic queries
-def cursor_covid(continent, country_id, field_covid, date, field):
+def cursor_covid(continent, country_id, date, field):
     db = client['covid19']
     collection = db[f"{continent}"]
 
     # Find list of dicts containing date and {field_covid} for choice country
-    covid_stat = "Not Available"
-    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, field_covid: 1}):
+    covid_stat = 0
+    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, f"data.{field}": 1}):
         covid = document.get("data")
 
     # Loop through dicts until finding the one with the corresponding date from dropdown
@@ -237,8 +280,8 @@ def cursor_covid(continent, country_id, field_covid, date, field):
         if dict.get("date") == date:
             covid_stat = dict
             break
-    if type(covid_stat) == str:
-        return covid_stat
+    if covid_stat == 0 or covid_stat.get(field) is None:
+        return 0
 
     return covid_stat.get(field)
 
@@ -247,7 +290,7 @@ def cursor_covid(continent, country_id, field_covid, date, field):
 def cursor_covid_case_growth(continent, country_id, date_today, date_yesterday):
     db = client['covid19']
     collection = db[f"{continent}"]
-    covid_case_growth = "Not Available"
+    covid_case_growth = 0
 
     # If the date is the first date of the year (i.e. no previous date exists in data)
     if date_today == '2020-01-01':
@@ -281,12 +324,12 @@ def cursor_covid_case_growth(continent, country_id, date_today, date_yesterday):
 
 
 # Helper function to make plot HTML components for stringency index, total cases, and total deaths line plots
-def make_line_plot(continent, country_id, field_covid, field):
+def make_line_plot(continent, country_id, field):
     db = client['covid19']
     collection = db[f"{continent}"]
 
     # Find list of dicts containing date, total_cases, and total_deaths for choice country
-    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, field_covid: 1}):
+    for document in collection.find({"_id": country_id}, {"_id": 0, "data.date": 1, f"data.{field}": 1}):
         plot_data = list(document.get("data"))
 
     # Set total_cases and total_deaths to 0 for days where no data exists
@@ -299,7 +342,7 @@ def make_line_plot(continent, country_id, field_covid, field):
     y = [dict[field] for dict in plot_data]
 
     # Create line plot with HTML components to send to frontend
-    field_list = ["total_cases", "total_deaths", "stringency_index"]
+    field_list = ["new_cases", "new_deaths", "stringency_index"]
     title_list = ["Cases over time",
                   "Deaths over time", "Stringency Index of time"]
     color_list = ["red", "green", "yellow"]
@@ -327,6 +370,7 @@ def make_bar_chart(country_id, field):
                         'North America', 'South America', 'Oceania']
     document_list, countries_comparison = [], []
     country_data = {}
+    script, div = "", ""
 
     # Create list of every country in the world with field
     for collection in collections_list:
@@ -341,11 +385,17 @@ def make_bar_chart(country_id, field):
 
     # Based on the field, find countries +/- 2 spots from the selected country in the sorted list
     index = 0
+    trigger = False
     for dict in document_list_sorted:
         if dict.get("_id") == country_id:
             country_data = dict
+            trigger = True
             break
         index += 1
+
+    # Return empty HTML components (i.e. not render chart) if the field does not exist for the selected country
+    if trigger == False:
+        return script, div
 
     # Find four other countries to compare the selected country to
     # Handle cases of countries in lowest end of list
