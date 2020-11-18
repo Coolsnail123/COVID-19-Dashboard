@@ -15,7 +15,7 @@ from pymongo import MongoClient
 from wtforms import SelectField
 
 client = MongoClient(
-    "mongodb+srv://sbp45:9381Gicz1eizn3w5@covid19.w6297.mongodb.net/covid19?retryWrites=true&w=majority")
+    "Contact repo manager for DB access")
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
