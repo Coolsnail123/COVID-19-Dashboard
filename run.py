@@ -181,7 +181,7 @@ def main():
         hdi_chart_script, hdi_chart_div = make_bar_chart(
             ObjectId(country_form.country.data), "human_development_index")
 
-    return render_template('test.html',
+    return render_template('main.html',
                            country_form=country_form,
                            date_form=date_form,
                            summary_headers=summary_headers,
@@ -340,7 +340,9 @@ def make_line_plot(continent, country_id, field):
     # Create lists for x and y coordinates
     x = pd.to_datetime([dict['date'] for dict in plot_data])
     y = [dict[field] for dict in plot_data]
-
+    data = {'x_values': x,
+            'y_values': y}
+    source = ColumnDataSource(data=data)
     # Create line plot with HTML components to send to frontend
     field_list = ["new_cases", "new_deaths", "stringency_index"]
     title_list = ["Cases over time",
@@ -349,7 +351,7 @@ def make_line_plot(continent, country_id, field):
     index = 0
     plot = figure(plot_height=300, sizing_mode='scale_width',
                   x_axis_type="datetime")
-    plot.line(x, y, line_width=3)
+    plot.line(x='x_values', y='y_values', source=source, line_width=3)
     for stat in field_list:
         if stat == field:
             plot.title.text = title_list[index]
