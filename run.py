@@ -1,11 +1,13 @@
 import json
 import os
+import random
 from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 from bokeh.embed import components
-from bokeh.models import HoverTool, LabelSet, ColumnDataSource
+from bokeh.models import (ColumnDataSource, HoverTool, LabelSet, Legend,
+                          LegendItem)
 from bokeh.palettes import Viridis5
 from bokeh.plotting import figure
 from bson.objectid import ObjectId
@@ -176,10 +178,10 @@ def main():
             continent, ObjectId(country_form.country.data), "new_cases")
         death_script, death_div = make_line_plot(
             continent, ObjectId(country_form.country.data), "new_deaths")
-        age_chart_script, age_chart_div = make_bar_chart(
-            ObjectId(country_form.country.data), "aged_65_older")
-        hdi_chart_script, hdi_chart_div = make_bar_chart(
-            ObjectId(country_form.country.data), "human_development_index")
+        age_chart_script, age_chart_div = make_line_compares(
+            ObjectId(country_form.country.data), country, "aged_65_older", "new_cases")
+        hdi_chart_script, hdi_chart_div = make_line_compares(
+            ObjectId(country_form.country.data), country, "human_development_index", "new_cases")
 
     return render_template('main.html',
                            country_form=country_form,
@@ -343,10 +345,11 @@ def make_line_plot(continent, country_id, field):
     data = {'x_values': x,
             'y_values': y}
     source = ColumnDataSource(data=data)
+
     # Create line plot with HTML components to send to frontend
     field_list = ["new_cases", "new_deaths", "stringency_index"]
-    title_list = ["Cases over time",
-                  "Deaths over time", "Stringency Index of time"]
+    title_list = ["Daily Cases",
+                  "Daily Deaths", "Daily Stringency Index"]
     color_list = ["red", "green", "yellow"]
     index = 0
     plot = figure(plot_height=300, sizing_mode='scale_width',
@@ -366,7 +369,8 @@ def make_line_plot(continent, country_id, field):
     return script, div
 
 
-def make_bar_chart(country_id, field):
+# Helper function to make plot HTML components for country comparison plots based on Pop% > 65 and HDI
+def make_line_compares(country_id, country_name, field_compare, field_display):
     db = client['covid19']
     collections_list = ['Africa', 'Asia', 'Europe',
                         'North America', 'South America', 'Oceania']
@@ -377,13 +381,14 @@ def make_bar_chart(country_id, field):
     # Create list of every country in the world with field
     for collection in collections_list:
         collection = db[collection]
-        for document in collection.find({}, {"location": 1, field: 1}):
-            if field in document:
+        for document in collection.find({}, {"location": 1, field_compare: 1, "data.date": 1, f"data.{field_display}": 1}):
+            if field_compare in document:
                 document_list.append({"_id": document.get("_id"), "location": document.get(
-                    "location"), field: document.get(field)})
+                    "location"), field_compare: document.get(field_compare), "data": document.get("data")})
 
     # Sort the country list based on the field
-    document_list_sorted = sorted(document_list, key=lambda i: i[field])
+    document_list_sorted = sorted(
+        document_list, key=lambda i: i[field_compare])
 
     # Based on the field, find countries +/- 2 spots from the selected country in the sorted list
     index = 0
@@ -429,32 +434,47 @@ def make_bar_chart(country_id, field):
         countries_comparison = [document_list_sorted[index - 2], document_list_sorted[index - 1],
                                 country_data, document_list_sorted[index + 1], document_list_sorted[index + 2]]
     countries_comparison_sorted = sorted(
-        countries_comparison, key=lambda i: i[field])
+        countries_comparison, key=lambda i: i[field_compare])
 
-    # Create ColumnDataSource object to hold all chart data
-    country_list = [dict["location"] for dict in countries_comparison_sorted]
-    field_list = [dict[field] for dict in countries_comparison_sorted]
-    data = {'x_values': country_list,
-            'top_values': field_list,
-            'color': Viridis5}
-    source = ColumnDataSource(data=data)
+    # Create lists to store plot data
+    data_list, country_list, time_list, case_list = [], [], [], []
+    for dict in countries_comparison_sorted:
+        country_list.append(dict.get("location"))
+        data_list.append(dict.get("data"))
 
-    # Create bar chart with HTML components to send to frontend
-    title = "Percent of population older than 65 (five countries comparison)" if field == "aged_65_older" else "Human Development Index (five countries comparison)"
-    chart = figure(x_range=country_list, plot_height=300,
-                   sizing_mode='scale_width', title=title)
-    labels = LabelSet(x='x_values', y='top_values', text='top_values', text_align='center',
-                      level='glyph', source=source, render_mode='canvas')
-    chart.vbar(x='x_values', top='top_values',
-               bottom=0, width=0.5, color='color', source=source)
-    chart.add_layout(labels)
-    chart.xgrid.grid_line_color = 'gray'
-    chart.xgrid.grid_line_alpha = .75
-    chart.xgrid.grid_line_dash = 'dashed'
-    chart.ygrid.grid_line_color = 'gray'
-    chart.ygrid.grid_line_alpha = .75
-    chart.ygrid.grid_line_dash = 'dashed'
-    script, div = components(chart)
+    # Organizes data_list into two lists of lists, one for dates and the other for new_cases
+    country_marker = 0
+    for list in data_list:
+        time_temp, case_temp = [], []
+        for dict in list:
+            if "new_cases" in dict:
+                time_temp.append(dict.get("date"))
+                case_temp.append(dict.get("new_cases"))
+        if len(case_temp) > 0:
+            time_list.append(pd.to_datetime(time_temp))
+            case_list.append(case_temp)
+        else:
+            # Removes the country from country_list if there is no data on it
+            del country_list[country_marker]
+        country_marker += 1
+
+    # Create line plot with HTML components to send to frontend
+    title = f"Daily cases for countries close to {country_name} in terms of Percent of population older than 65" if field_compare == "aged_65_older" else f"Daily cases for countries close to {country_name} in terms of Human Development Index"
+    plot = figure(plot_height=300, x_axis_type="datetime",
+                  sizing_mode='scale_width', title=title)
+    r = plot.multi_line(xs=time_list, ys=case_list, line_color=random.sample(
+        Viridis5, len(case_list)), line_width=3)
+    legend_list = []
+    index = 0
+    # Create legend
+    for country in country_list:
+        legend_list.append(LegendItem(
+            label=country, renderers=[r], index=index))
+        index += 1
+    legend = Legend(items=legend_list)
+    plot.add_layout(legend)
+    plot.legend.location = 'top_left'
+    script, div = components(plot)
 
     return script, div
 
