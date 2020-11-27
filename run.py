@@ -358,9 +358,10 @@ def make_line_plot(continent, country_id, field):
         if stat == field:
             plot.title.text = title_list[index]
             plot.add_tools(HoverTool(
-                tooltips=[("Date", "$x{%F}"),
-                          (title_list[index], "$y")],
-                formatters={"$x": 'datetime'}, mode='vline'))
+                tooltips=[("Date", "@x_values{%F}"),
+                          (title_list[index], "@y_values")],
+                formatters={"@x_values": 'datetime'},
+                mode='vline'))
             break
         index += 1
     script, div = components(plot)
@@ -436,9 +437,10 @@ def make_line_compares(country_id, country_name, field_compare, field_display):
         countries_comparison, key=lambda i: i[field_compare])
 
     # Create lists to store plot data
-    data_list, country_list, time_list, case_list, color_list = [], [], [], [], []
+    data_list, country_list, field_compare_list, time_list, case_list, color_list = [], [], [], [], [], []
     for dict in countries_comparison_sorted:
         country_list.append(dict.get("location"))
+        field_compare_list.append(dict.get(field_compare))
         data_list.append(dict.get("data"))
 
     # Populate the lists that will be used for plotting
@@ -455,20 +457,24 @@ def make_line_compares(country_id, country_name, field_compare, field_display):
         else:
             # Removes the country from country_list if there is no data on it
             del country_list[country_marker]
+            del field_compare_list[country_marker]
         country_marker += 1
     color_list = random.sample(Viridis5, len(case_list))
 
     # Create line plot with HTML components to send to frontend
-    title = f"Daily cases for countries close to {country_name} in terms of Percent of population older than 65" if field_compare == "aged_65_older" else f"Daily cases for countries close to {country_name} in terms of Human Development Index"
+    title = f"Daily cases for countries close to {country_name} in terms of Percent of Pop. 65+" if field_compare == "aged_65_older" else f"Daily cases for countries close to {country_name} in terms of HDI"
     plot = figure(plot_height=300, x_axis_type="datetime",
                   sizing_mode='scale_width', title=title)
-    for x, y, country, color in zip(time_list, case_list, country_list, color_list):
+    for x, y, country, compared_field, color in zip(time_list, case_list, country_list, field_compare_list, color_list):
         r = plot.line(x=x, y=y, line_width=2, color=color, alpha=0.8,
-                      muted_color=color, muted_alpha=0.2, legend_label=country)
+                      muted_color=color, muted_alpha=0.2, legend_label=f'{country}, {compared_field}')
         plot.add_tools(HoverTool(renderers=[r],
                                  tooltips=[
-                                     ("Country", country), ("Date", "@x{%F}"), ("Number of Cases", "@y")],
-                                 formatters={"@x": 'datetime'}, mode='vline'))
+                                     ("Country", country),
+                                     ("Date", "@x{%F}"),
+                                     ("Number of Cases", "@y")],
+                                 formatters={"@x": 'datetime'},
+                                 mode='vline'))
     plot.legend.location = "top_left"
     plot.legend.click_policy = "mute"
     script, div = components(plot)
