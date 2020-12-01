@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <title>COVID-19 Data Analysis Dashboard - CSDS 234 Final Project</title>
+    <meta charset="utf-8">
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+    <link href="https://bootswatch.com/4/journal/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link rel='stylesheet' href='https://codepen.io/chriddyp/pen/bWLwgP.css'>
+    <!-- Style settings -->
+    <style>
+        .title {
+            padding: 20px;
+            text-align: center;
+            margin: auto;
+            font-size: 90px;
+            font-weight: bold;
+        }
+
+        table.dataframe {
+            padding: 60px;
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        td {
+            text-align: center;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background-color: #33C3F0;">
+        <div class="collapse navbar-collapse" id="navbarColor01">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="dashboard">Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="rankingtable">Ranking Table</a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    <div class="title">
+        <h1>World Country Rankings</h1>
+    </div>
+
+    <!-- Creates dropdown for ranking metric -->
+    <form method="POST">
+        {{ rank_form.rank }}
+        <button type="submit">Sort</button>
+    </form>
+
+    <!-- Creates table of country statistics -->
+    {% for table in tables %}
+    {{ table|safe }}
+    {% endfor %}
+
+</body>
+
+</html>

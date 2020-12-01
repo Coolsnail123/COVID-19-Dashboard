@@ -33,8 +33,15 @@ class DateForm(FlaskForm):
     date = SelectField('date', choices=[])
 
 
+class RankForm(FlaskForm):
+    rank = SelectField('ranking', choices=['Location', 'Population', 'Median Age', 'Percent of Population Aged 65+',
+                                           'GDP Per Capita', 'Hospital Beds Per Thousand', 'Life Expectancy', 'Human Development Index'])
+
+
+# The Main Dashboard with COVI9-19 Statistics, Country Statistics, and Bokeh Visualizations
 @app.route('/', methods=['GET', 'POST'])
-def main():
+@app.route('/dashboard', methods=['GET', 'POST'])
+def dashboard():
     db = client['covid19']
     collection = db['Africa']
 
@@ -111,7 +118,7 @@ def main():
             country_form.country.data), "human_development_index")
 
         # Consolidate above queries into tuple to render on the webpage
-        country_headers = ("Population", "Median Age", "Percent of Population 65+", "Per Capita GDP",
+        country_headers = ("Population", "Median Age", "Percent of Population Aged 65+", "GDP Per Capita ",
                            "Hospital Beds Per Thousand", "Life Expectancy", "Human Development Index")
         country_data = (population, med_age, percent_pop_65, gdp,
                         hospital_beds, life_expectancy, human_dev_index)
@@ -207,6 +214,46 @@ def main():
                            )
 
 
+# The Ranking Table for countries based on select demographic metrics
+@app.route('/rankingtable', methods=['GET', 'POST'])
+def rankingtable():
+    db = client['covid19']
+    collections_list = ['Africa', 'Asia', 'Europe',
+                        'North America', 'South America', 'Oceania']
+    df = pd.DataFrame()
+    column_names = ["Location", "Population", "Median Age", "Percent of Population Aged 65+", "GDP Per Capita",
+                    "Hospital Beds Per Thousand", "Life Expectancy", "Human Development Index"]
+    document_list = []
+    choices = ['location', 'population', 'median_age', 'aged_65_older',
+               'gdp_per_capita', 'hospital_beds_per_thousand', 'life_expectancy', 'human_development_index']
+
+    # Set up ranking dropdown
+    rank_form = RankForm()
+
+    if request.method == "POST":
+        index = 0
+        for rank_choice in column_names:
+            if rank_choice == rank_form.rank.data:
+                break
+            index += 1
+        print(choices[index])
+        # Create list of every country in the world with ranking fields
+        for collection in collections_list:
+            collection = db[collection]
+            for document in collection.find({}, {"_id": 0, "location": 1, "population": 1, "median_age": 1, "aged_65_older": 1, "gdp_per_capita": 1, "hospital_beds_per_thousand": 1, "life_expectancy": 1, "human_development_index": 1}):
+                if choices[index] in document:
+                    document_list.append(document)
+
+        # Sort the country list based on the field
+        df = pd.DataFrame(document_list)
+        df = df.sort_values(by=choices[index], ascending=False)
+        df.columns = column_names
+
+    return render_template('rankingtable.html',
+                           rank_form=rank_form,
+                           tables=[df.to_html(index=False, border='0')])
+
+
 # Helper function for quick summary aggregation queries
 def summary_query(date, field):
     db = client['covid19']
@@ -288,7 +335,7 @@ def cursor_covid(continent, country_id, date, field):
     return covid_stat.get(field)
 
 
-# Helper function for quick covid statistic queries
+# Helper function for computing day over day case growth rate
 def cursor_covid_case_growth(continent, country_id, date_today, date_yesterday):
     db = client['covid19']
     collection = db[f"{continent}"]
@@ -455,7 +502,7 @@ def make_line_compares(country_id, country_name, field_compare, field_display):
             time_list.append(pd.to_datetime(time_temp))
             case_list.append(case_temp)
         else:
-            # Removes the country from country_list if there is no data on it
+            # Deletes corresponding entry in country_list and field_compare_list when there is no data
             del country_list[country_marker]
             del field_compare_list[country_marker]
         country_marker += 1
