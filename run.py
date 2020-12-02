@@ -23,6 +23,7 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 
+# Define multiple classes, one for each dropdown form that will be rendered on the webpage
 class CountryForm(FlaskForm):
     continent = SelectField('continent', choices=[
                             'Africa', 'Asia', 'Europe', 'North America', 'South America', 'Oceania'])
@@ -36,6 +37,10 @@ class DateForm(FlaskForm):
 class RankForm(FlaskForm):
     rank = SelectField('ranking', choices=['Location', 'Population', 'Median Age', 'Percent of Population Aged 65+',
                                            'GDP Per Capita', 'Hospital Beds Per Thousand', 'Life Expectancy', 'Human Development Index'])
+
+
+class SortForm(FlaskForm):
+    sort = SelectField('order', choices=['Ascending', 'Descending'])
 
 
 # The Main Dashboard with COVI9-19 Statistics, Country Statistics, and Bokeh Visualizations
@@ -220,15 +225,19 @@ def rankingtable():
     db = client['covid19']
     collections_list = ['Africa', 'Asia', 'Europe',
                         'North America', 'South America', 'Oceania']
+
+    # Define all variables needed for function
     df = pd.DataFrame()
     column_names = ["Location", "Population", "Median Age", "Percent of Population Aged 65+", "GDP Per Capita",
                     "Hospital Beds Per Thousand", "Life Expectancy", "Human Development Index"]
     document_list = []
     choices = ['location', 'population', 'median_age', 'aged_65_older',
                'gdp_per_capita', 'hospital_beds_per_thousand', 'life_expectancy', 'human_development_index']
+    sort_order = ""
 
-    # Set up ranking dropdown
+    # Set up dropdowns
     rank_form = RankForm()
+    sort_form = SortForm()
 
     if request.method == "POST":
         index = 0
@@ -236,7 +245,7 @@ def rankingtable():
             if rank_choice == rank_form.rank.data:
                 break
             index += 1
-        print(choices[index])
+
         # Create list of every country in the world with ranking fields
         for collection in collections_list:
             collection = db[collection]
@@ -244,13 +253,15 @@ def rankingtable():
                 if choices[index] in document:
                     document_list.append(document)
 
-        # Sort the country list based on the field
+        # Sort the country list based on the field and decide ordering by dropdown choice
         df = pd.DataFrame(document_list)
-        df = df.sort_values(by=choices[index], ascending=False)
+        sort_order = True if sort_form.sort.data == 'Ascending' else sort_order == True
+        df = df.sort_values(by=choices[index], ascending=sort_order)
         df.columns = column_names
 
     return render_template('rankingtable.html',
                            rank_form=rank_form,
+                           sort_form=sort_form,
                            tables=[df.to_html(index=False, border='0')])
 
 
