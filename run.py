@@ -65,7 +65,7 @@ def dashboard():
     # Set dropdown choices for days
     time_list = []
     start_date = date(2020, 1, 1)
-    end_date = date(2020, 11, 1)
+    end_date = date(2020, 12, 8)
     delta = timedelta(days=1)
     while start_date <= end_date:
         time_list.append(start_date.strftime("%Y-%m-%d"))
